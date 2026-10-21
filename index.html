@@ -1,0 +1,564 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Pre-Primary UDISE Tracker</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+<style>
+/* Layout: white single-theme working page. Header, upload, filter pipeline, totals, then a drill-down pivot (District > Block > School). */
+:root{
+  color-scheme:light;
+  --bg:#ffffff; --panel:#f6f8fb; --panel-2:#edf1f6; --ink:#16202c; --muted:#5b6777; --line:#dfe5ec;
+  --accent:#1f4fb8; --accent-soft:#e8eefb; --accent-ink:#ffffff;
+  --ok:#17703f; --ok-soft:#e1f2e8; --warn:#9a5a00; --warn-soft:#fbefd9; --bad:#b0281f; --bad-soft:#fbe3e0;
+  --display:"Bricolage Grotesque","Segoe UI",system-ui,sans-serif;
+  --body:"Source Sans 3","Segoe UI",system-ui,-apple-system,sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,Consolas,monospace;
+}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.45}
+.wrap{max-width:1180px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+header{border-bottom:1px solid var(--line)}
+header .wrap{padding-block:20px 18px;display:flex;flex-wrap:wrap;gap:14px 24px;align-items:flex-end;justify-content:space-between}
+.eyebrow{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600}
+h1{font-family:var(--display);font-weight:700;font-size:clamp(21px,3vw,30px);line-height:1.15;margin:6px 0;text-wrap:balance;max-width:34ch}
+.srcline{color:var(--muted);font-size:13.5px;display:flex;flex-wrap:wrap;gap:4px 14px}
+.srcline b{color:var(--ink);font-weight:600}
+.actions{display:flex;gap:10px;flex-wrap:wrap}
+button{font:inherit;font-weight:600;font-size:14px;border-radius:8px;padding:9px 14px;border:1px solid transparent;cursor:pointer}
+.btn-primary{background:var(--accent);color:var(--accent-ink)}
+.btn-plain{background:var(--bg);color:var(--ink);border-color:var(--line)}
+button:focus-visible,select:focus-visible,input:focus-visible,.drop:focus-visible,tr.click:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+button:disabled{opacity:.55;cursor:progress}
+main .wrap{padding-block:20px 48px;display:flex;flex-direction:column;gap:18px}
+.drop{border:1.5px dashed var(--line);background:var(--panel);border-radius:12px;padding:14px 18px;display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center;justify-content:space-between;cursor:pointer}
+.drop.over{border-color:var(--accent);background:var(--accent-soft)}
+.drop strong{font-family:var(--display);font-weight:600;font-size:16.5px}
+.drop p{margin:2px 0 0;color:var(--muted);font-size:13.5px;max-width:72ch}
+.progress{display:flex;flex-direction:column;gap:6px;min-width:0}
+.lbl{font-size:13px;color:var(--muted);font-weight:600}
+.bar{height:6px;background:var(--panel-2);border-radius:99px;overflow:hidden;width:min(300px,70vw)}
+.bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .2s}
+.note{border-radius:10px;padding:10px 14px;font-size:14px}
+.note.err{background:var(--bad-soft);color:var(--bad)} .note.warn{background:var(--warn-soft);color:var(--warn)} .note.ok{background:var(--ok-soft);color:var(--ok)}
+.pipeline{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.step{padding:12px 16px;border-left:1px solid var(--line);min-width:0}
+.step:first-child{border-left:0}
+.step .k{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.step .rule{font-family:var(--mono);font-size:12.5px;margin-top:3px;overflow-wrap:anywhere}
+.step .n{font-family:var(--display);font-size:23px;font-weight:700;margin-top:4px;font-variant-numeric:tabular-nums}
+.step .sub{font-size:12.5px;color:var(--muted)}
+.step.final{background:var(--accent-soft)}
+details.vals{font-size:13.5px;margin-top:8px}
+details.vals summary{cursor:pointer;color:var(--accent);font-weight:600;width:fit-content}
+.valgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;margin-top:10px}
+.valgrid h4{margin:0 0 6px;font-size:13px;font-family:var(--mono);font-weight:600}
+.valgrid table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+.valgrid td{padding:2px 0;border-bottom:1px solid var(--line)}
+.valgrid td:last-child{text-align:right}
+.valgrid tr.sel td{color:var(--accent);font-weight:700}
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.kpi{border:1px solid var(--line);border-radius:12px;padding:12px 16px;min-width:0}
+.kpi .k{font-size:12.5px;color:var(--muted);font-weight:600}
+.kpi .v{font-family:var(--display);font-weight:700;font-size:28px;line-height:1.15;margin-top:2px;font-variant-numeric:tabular-nums}
+.kpi .s{font-size:12.5px;color:var(--muted);margin-top:2px}
+.kpi.main{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.kpi.main .k,.kpi.main .s{color:color-mix(in srgb,var(--accent-ink) 80%,transparent)}
+.up{color:var(--ok);font-weight:700}.down{color:var(--bad);font-weight:700}
+.kpi.main .up,.kpi.main .down{color:var(--accent-ink)}
+.viewbar{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;justify-content:space-between}
+.seg{display:inline-flex;background:var(--panel-2);border-radius:9px;padding:3px;gap:2px;flex-wrap:wrap}
+.seg button{background:transparent;color:var(--muted);padding:6px 14px;border-radius:7px;font-size:14px}
+.seg button[aria-pressed="true"]{background:var(--bg);color:var(--ink);box-shadow:0 1px 2px rgba(22,32,44,.16)}
+.toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+select,input[type="search"]{font:inherit;font-size:14px;padding:8px 10px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);max-width:100%}
+input[type="search"]{min-width:0;flex:1 1 240px}
+.crumb{font-size:14px;color:var(--muted);display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.crumb button{background:none;border:0;padding:0;color:var(--accent);font-size:14px}
+.crumb b{color:var(--ink)}
+.tablebox{overflow-x:auto;border:1px solid var(--line);border-radius:12px}
+.ptitle{font-weight:700;padding:11px 12px;border-bottom:1px solid var(--line);font-size:14px;background:var(--panel);overflow-wrap:anywhere}
+table.data{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;font-size:14px}
+table.data th{background:var(--panel-2);text-align:left;font-size:12.5px;color:var(--muted);font-weight:700;padding:0;white-space:nowrap}
+table.data th button{all:unset;cursor:pointer;display:block;padding:9px 12px;width:100%;box-sizing:border-box}
+table.data th.num,table.data td.num{text-align:right}
+table.data th.num button{text-align:right}
+table.data td{padding:7px 12px;border-top:1px solid var(--line);vertical-align:middle}
+table.data tbody tr.click{cursor:pointer}
+table.data tbody tr.click:hover td{background:var(--accent-soft)}
+table.data tbody tr.click td.name{color:var(--accent);font-weight:600}
+table.data tfoot td{font-weight:700;background:var(--panel-2);border-top:2px solid var(--line)}
+td.mono{font-family:var(--mono);font-size:12.5px}
+td.zero{color:var(--muted)}
+.pill{display:inline-block;padding:2px 9px;border-radius:99px;font-size:12.5px;font-weight:600;white-space:nowrap}
+.p-ps{background:var(--accent-soft);color:var(--accent)} .p-cs{background:var(--ok-soft);color:var(--ok)}
+.p-new{background:var(--warn-soft);color:var(--warn);margin-left:6px}
+.more{display:flex;justify-content:center;gap:12px;align-items:center;padding:6px;color:var(--muted);font-size:13.5px}
+.foot{font-size:13px;color:var(--muted);max-width:90ch}
+.cfg{border:1px solid var(--line);border-radius:12px;padding:12px 16px;display:flex;flex-direction:column;gap:8px}
+.cfgrow{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+input[type="url"]{font:inherit;font-size:14px;padding:8px 10px;border-radius:8px;border:1px solid var(--line);flex:1 1 280px;min-width:0}
+.loading{padding:28px 12px;color:var(--muted)}
+@media (max-width:860px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.pipeline{grid-template-columns:repeat(2,minmax(0,1fr))}.step:nth-child(3){border-left:0}.step:nth-child(n+3){border-top:1px solid var(--line)}.valgrid{grid-template-columns:1fr}}
+@media (max-width:460px){.pipeline{grid-template-columns:1fr}.step{border-left:0;border-top:1px solid var(--line)}.step:first-child{border-top:0}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <div>
+      <div class="eyebrow">Uttar Pradesh · UDISE+ School Report</div>
+      <h1 id="pageTitle">Parishadiya Primary and Composite schools having Pre-Primary Section</h1>
+      <div class="srcline" id="srcline"></div>
+    </div>
+    <div class="actions">
+      <button class="btn-plain" id="btnExport" type="button">Export Excel</button>
+    </div>
+  </div>
+</header>
+
+<main>
+<div class="wrap">
+  <div id="msg" hidden></div>
+
+  <section aria-label="Filters applied">
+    <div class="pipeline" id="pipeline"></div>
+    <details class="vals" id="valsBox">
+      <summary>All filter values in this file</summary>
+      <div class="valgrid" id="valgrid"></div>
+    </details>
+  </section>
+
+  <section class="kpis" id="kpis" aria-label="Totals"></section>
+
+  <section style="display:flex;flex-direction:column;gap:12px">
+    <div class="viewbar">
+      <div class="seg" role="group" aria-label="View" id="segView">
+        <button type="button" data-view="district" aria-pressed="true">District</button>
+        <button type="button" data-view="block" aria-pressed="false">Block</button>
+        <button type="button" data-view="school" aria-pressed="false">School</button>
+      </div>
+      <div class="toolbar">
+        <label class="lbl" for="selProfile">Profile status</label>
+        <select id="selProfile"></select>
+      </div>
+    </div>
+    <div class="toolbar" id="toolbar"></div>
+    <div class="tablebox" id="tablebox"></div>
+    <div class="more" id="more" hidden></div>
+  </section>
+
+  <p class="foot">Filters match the pivot in the workbook: School_Managment_Code = 1, then Pre-Pri_sec = 1 - Yes, then School_Category_Code 1 (PS) and 2 (CS). Districts and blocks with no qualifying school don't appear, same as the Excel pivot. "Change" and the <span class="pill p-new">New</span> tag compare with the previous update.</p>
+</div>
+</main>
+
+<script>
+const MODE = "public";
+// Paste the Apps Script web app URL (ends in /exec) between the quotes.
+const DATA_URL = "https://script.google.com/macros/s/AKfycbyGAId3DL8z3vxa8JHTWGe3w322iTQX0q8Q-Q7BF2bi2cSjnFM3T8wUcFWRQkn-e4vj/exec";
+</script>
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+const fmt = n => (n == null ? "–" : Number(n).toLocaleString("en-IN"));
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const tick = () => new Promise(r => setTimeout(r, 0));
+const dmy = iso => iso ? iso.split("-").reverse().join("-") : "";
+const LS_CUR = "ppudise.cur.v1", LS_PREV = "ppudise.prev.v1", LS_UI = "ppudise.ui.v1";
+const lsGet = k => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : null; } catch (e) { return null; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } };
+
+const S = { snap: null, prev: null, prevSet: null, view: "district", dist: "", block: "", q: "", profile: "", sort: {}, limit: 300, busy: false };
+
+/* ---------- normalisers ---------- */
+const normU = v => { const d = String(v ?? "").replace(/\D/g, ""); return d.length === 10 ? "0" + d : d; };
+const code = v => { const m = /^\s*(\d+)/.exec(String(v ?? "")); return m ? m[1] : ""; };
+const isYes = v => { v = String(v ?? ""); return /^\s*1\b/.test(v) || /\byes\b/i.test(v); };
+const hkey = h => String(h ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+
+/* ---------- one pass over the School Report ---------- */
+function newAcc() {
+  const A = { hdr: null, total: 0, f1: 0, f2: 0, f3: 0, schools: [], vals: { mg: {}, pp: {}, cat: {} } };
+  A.header = row => {
+    const k = row.map(hkey);
+    if (!k.includes("udisecode")) return;
+    const f = t => k.findIndex(t);
+    const c = { u: k.indexOf("udisecode"), n: f(x => x === "schoolname"), d: f(x => x.startsWith("districtname")), b: f(x => x.startsWith("blockname")),
+      cat: f(x => x.startsWith("schoolcategory")), mg: f(x => x.startsWith("schoolmanag")), pp: f(x => x.startsWith("preprisec") || x.includes("preprimary")),
+      loc: f(x => x.startsWith("schoollocation")), os: f(x => x === "overallstatus") };
+    const names = { n: "School_Name", d: "District_Name_&_Code", b: "Block_Name_&_Code", cat: "School_Category_Code", mg: "School_Managment_Code", pp: "Pre-Pri_sec" };
+    const miss = Object.keys(names).filter(x => c[x] < 0).map(x => names[x]);
+    if (miss.length) throw new Error("Found the header row, but these columns are missing: " + miss.join(", ") + ".");
+    A.hdr = c; A.need = Object.values(c).filter(i => i >= 0);
+  };
+  A.row = r => {
+    const c = A.hdr;
+    if (!c) { A.header(r); return; }
+    const u = normU(r[c.u]); if (!u) return;
+    A.total++;
+    const mgR = String(r[c.mg] ?? "").trim(), ppR = String(r[c.pp] ?? "").trim(), catR = String(r[c.cat] ?? "").trim();
+    A.vals.mg[mgR] = (A.vals.mg[mgR] || 0) + 1; A.vals.pp[ppR] = (A.vals.pp[ppR] || 0) + 1; A.vals.cat[catR] = (A.vals.cat[catR] || 0) + 1;
+    if (code(mgR) !== "1") return; A.f1++;
+    if (!isYes(ppR)) return; A.f2++;
+    const cat = code(catR); if (cat !== "1" && cat !== "2") return; A.f3++;
+    A.schools.push([u, String(r[c.n] ?? "").trim(), String(r[c.d] ?? "").trim(), String(r[c.b] ?? "").trim(), cat,
+      c.loc >= 0 ? String(r[c.loc] ?? "").replace(/^\s*\d+\s*-\s*/, "").trim() : "", c.os >= 0 ? String(r[c.os] ?? "").trim() : ""]);
+  };
+  A.finish = file => {
+    if (!A.hdr) throw new Error("Couldn't find a header row with UDISE_Code. Is this the School Report?");
+    const ay = (/AY[_\s-]*(\d{4}-\d{2})/i.exec(file.name) || [])[1] || "";
+    return { file: file.name, fileDate: new Date(file.lastModified || Date.now()).toISOString().slice(0, 10), loadedAt: new Date().toISOString(), ay,
+      funnel: [A.total, A.f1, A.f2, A.f3], schools: A.schools, values: A.vals };
+  };
+  return A;
+}
+
+function progress(text, frac) { $("#progress").hidden = false; $("#progressText").textContent = text; $("#progressBar").style.width = Math.round(Math.max(0, Math.min(1, frac)) * 100) + "%"; }
+function showMsg(kind, html) { const m = $("#msg"); m.hidden = !html; m.className = "note " + kind; m.innerHTML = html || ""; }
+
+/* ---------- XLSX: zip directory + native inflate + streamed row scan ---------- */
+async function zipEntries(file) {
+  const tailLen = Math.min(file.size, 65557 + 22);
+  const tail = new DataView(await file.slice(file.size - tailLen).arrayBuffer());
+  let e = -1;
+  for (let i = tailLen - 22; i >= 0; i--) if (tail.getUint32(i, true) === 0x06054b50) { e = i; break; }
+  if (e < 0) throw new Error("This doesn't look like an .xlsx file. Upload the Excel as downloaded, or save the School Report sheet as .csv.");
+  let n = tail.getUint16(e + 10, true), cdSize = tail.getUint32(e + 12, true), cdOff = tail.getUint32(e + 16, true);
+  if (cdOff === 0xFFFFFFFF || n === 0xFFFF) {
+    const loc = e - 20;
+    if (loc >= 0 && tail.getUint32(loc, true) === 0x07064b50) {
+      const zo = Number(tail.getBigUint64(loc + 8, true));
+      const z = new DataView(await file.slice(zo, zo + 56).arrayBuffer());
+      cdSize = Number(z.getBigUint64(40, true)); cdOff = Number(z.getBigUint64(48, true));
+    }
+  }
+  const cd = new DataView(await file.slice(cdOff, cdOff + cdSize).arrayBuffer());
+  const dec = new TextDecoder(), out = {};
+  let p = 0;
+  while (p + 46 <= cd.byteLength && cd.getUint32(p, true) === 0x02014b50) {
+    const method = cd.getUint16(p + 10, true);
+    let csize = cd.getUint32(p + 20, true), usize = cd.getUint32(p + 24, true), off = cd.getUint32(p + 42, true);
+    const nl = cd.getUint16(p + 28, true), xl = cd.getUint16(p + 30, true), cl = cd.getUint16(p + 32, true);
+    const name = dec.decode(new Uint8Array(cd.buffer, p + 46, nl));
+    let x = p + 46 + nl; const xe = x + xl;
+    while (x + 4 <= xe) {
+      const id = cd.getUint16(x, true), sz = cd.getUint16(x + 2, true);
+      if (id === 1) { let q = x + 4;
+        if (usize === 0xFFFFFFFF) { usize = Number(cd.getBigUint64(q, true)); q += 8; }
+        if (csize === 0xFFFFFFFF) { csize = Number(cd.getBigUint64(q, true)); q += 8; }
+        if (off === 0xFFFFFFFF) off = Number(cd.getBigUint64(q, true)); }
+      x += 4 + sz;
+    }
+    out[name] = { name, method, csize, usize, off };
+    p += 46 + nl + xl + cl;
+  }
+  return out;
+}
+async function entryStream(file, e) {
+  const h = new DataView(await file.slice(e.off, e.off + 30).arrayBuffer());
+  const start = e.off + 30 + h.getUint16(26, true) + h.getUint16(28, true);
+  let s = file.slice(start, start + e.csize).stream();
+  if (e.method === 8) s = s.pipeThrough(new DecompressionStream("deflate-raw"));
+  else if (e.method !== 0) throw new Error("Unsupported compression in " + e.name);
+  return s.pipeThrough(new TextDecoderStream());
+}
+const entryText = async (file, e) => { const r = (await entryStream(file, e)).getReader(); let s = ""; for (;;) { const { done, value } = await r.read(); if (done) return s; s += value; } };
+const XENT = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" };
+const unx = s => s.indexOf("&") < 0 ? s : s.replace(/&(#x[0-9a-f]+|#\d+|\w+);/gi, (m, g) =>
+  g[0] === "#" ? String.fromCodePoint(g[1] === "x" || g[1] === "X" ? parseInt(g.slice(2), 16) : +g.slice(1)) : (XENT[g] ?? m));
+function textOf(inner) { inner = inner.replace(/<rPh\b[\s\S]*?<\/rPh>/g, ""); let o = "", m; const re = /<t\b[^>]*>([\s\S]*?)<\/t>/g; while ((m = re.exec(inner))) o += m[1]; return unx(o); }
+function colNum(L) { let n = 0; for (let i = 0; i < L.length; i++) n = n * 26 + L.charCodeAt(i) - 64; return n - 1; }
+
+async function readXlsx(file, acc) {
+  progress("Opening workbook…", 0.02);
+  const ents = await zipEntries(file);
+  const wb = ents["xl/workbook.xml"]; if (!wb) throw new Error("No workbook found inside this .xlsx.");
+  const wbx = await entryText(file, wb);
+  const rels = ents["xl/_rels/workbook.xml.rels"] ? await entryText(file, ents["xl/_rels/workbook.xml.rels"]) : "";
+  const relMap = {};
+  for (const m of rels.matchAll(/<Relationship\b[^>]*>/g)) { const id = /Id="([^"]+)"/.exec(m[0]), t = /Target="([^"]+)"/.exec(m[0]); if (id && t) relMap[id[1]] = t[1].replace(/^\/?xl\//, "").replace(/^\//, ""); }
+  const sheets = [...wbx.matchAll(/<sheet\b[^>]*>/g)].map(m => ({ name: unx((/name="([^"]*)"/.exec(m[0]) || [])[1] || ""), path: "xl/" + (relMap[(/r:id="([^"]+)"/.exec(m[0]) || [])[1]] || "") }));
+  let sh = sheets.find(s => /school\s*report/i.test(s.name) && ents[s.path]);
+  if (!sh) sh = sheets.filter(s => ents[s.path]).sort((a, b) => ents[b.path].usize - ents[a.path].usize)[0];
+  if (!sh) throw new Error("Couldn't find any worksheet in this workbook.");
+  let shared = [];
+  if (ents["xl/sharedStrings.xml"]) {
+    progress("Reading text values…", 0.05);
+    const x = await entryText(file, ents["xl/sharedStrings.xml"]);
+    const re = /<si\b[^>]*?(?:\/>|>([\s\S]*?)<\/si>)/g; let m;
+    while ((m = re.exec(x))) shared.push(m[1] ? textOf(m[1]) : "");
+  }
+  const ent = ents[sh.path], reader = (await entryStream(file, ent)).getReader();
+  const rowRe = /<row\b[^>]*?(?:\/>|>([\s\S]*?)<\/row>)/g, cellRe = /<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g;
+  let buf = "", read = 0, k = 0, want = null;
+  const scan = chunk => {
+    rowRe.lastIndex = 0; let rm;
+    while ((rm = rowRe.exec(chunk))) {
+      const inner = rm[1]; if (!inner) continue;
+      const row = []; cellRe.lastIndex = 0; let cm, seq = 0;
+      while ((cm = cellRe.exec(inner))) {
+        const at = cm[1], rr = /\br="([A-Z]+)/.exec(at), ci = rr ? colNum(rr[1]) : seq; seq = ci + 1;
+        if (want && !want[ci]) continue;
+        const body = cm[2]; if (!body) continue;
+        const tt = (/\bt="(\w+)"/.exec(at) || [])[1];
+        let v;
+        if (tt === "inlineStr") v = textOf(body);
+        else { const vm = /<v>([\s\S]*?)<\/v>/.exec(body); if (!vm) continue; v = tt === "s" ? shared[+vm[1]] : unx(vm[1]); }
+        row[ci] = v;
+      }
+      acc.row(row);
+      if (!want && acc.hdr) { want = []; for (const i of acc.need) want[i] = true; }
+    }
+  };
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += value; read += value.length;
+    const last = buf.lastIndexOf("</row>"); if (last < 0) continue;
+    scan(buf.slice(0, last + 6)); buf = buf.slice(last + 6);
+    if (++k % 6 === 0) { progress(`Reading “${sh.name}”… ${fmt(acc.total)} schools`, 0.08 + 0.9 * Math.min(1, read / (ent.usize || 1))); await tick(); }
+  }
+  if (buf) scan(buf);
+  shared = null;
+}
+async function readCsv(file, acc) {
+  if (!window.Papa) throw new Error("The CSV reader didn't load. Check your connection, or upload the .xlsx instead.");
+  await new Promise((resolve, reject) => {
+    Papa.parse(file, { skipEmptyLines: true, chunkSize: 1 << 22,
+      chunk: (res, parser) => {
+        try { for (const r of res.data) acc.row(r); } catch (e) { parser.abort(); reject(e); return; }
+        progress(`Reading CSV… ${fmt(acc.total)} schools`, (res.meta.cursor || 0) / file.size);
+        parser.pause(); setTimeout(() => parser.resume(), 0);
+      }, complete: resolve, error: err => reject(new Error("Couldn't read the CSV: " + err.message)) });
+  });
+}
+async function handleReport(file) {
+  if (!file || S.busy) return;
+  S.busy = true; $("#btnUpload").disabled = true; showMsg("", "");
+  const t0 = performance.now();
+  try {
+    const acc = newAcc();
+    if (/\.csv$/i.test(file.name)) await readCsv(file, acc); else await readXlsx(file, acc);
+    const snap = acc.finish(file);
+    if (S.snap) S.prev = { file: S.snap.file, fileDate: S.snap.fileDate, codes: S.snap.schools.map(s => s[0]), dist: countBy(S.snap.schools, 2), block: countBy(S.snap.schools, 3) };
+    S.snap = snap; setPrevSet();
+    progress(`Done: ${fmt(snap.funnel[0])} schools read in ${((performance.now() - t0) / 1000).toFixed(1)} s`, 1);
+    S.limit = 300; render();
+    const small = snap.funnel[0] < 100000 ? `This file has only ${fmt(snap.funnel[0])} schools. Check it's the full UP School Report and not a district extract. ` : "";
+    $("#btnData").hidden = false;
+    showMsg(small ? "warn" : "ok", small + `Ready. Click <b>Download data.json</b>, then upload it to the GitHub repo (replace the old one). The public page updates within a minute or two.`);
+  } catch (e) { console.error(e); $("#progress").hidden = true; showMsg("err", esc(e.message || String(e))); }
+  finally { S.busy = false; $("#btnUpload").disabled = false; }
+}
+function countBy(list, idx) { const o = {}; for (const s of list) { const k = idx === 3 ? s[2] + "|" + s[3] : s[idx]; o[k] = (o[k] || 0) + 1; } return o; }
+function setPrevSet() { S.prevSet = S.prev && S.prev.codes ? new Set(S.prev.codes) : null; }
+
+/* ---------- data views ---------- */
+function filtered() { return S.snap ? S.snap.schools.filter(s => !S.profile || s[6] === S.profile) : []; }
+function group(list, keyFn, labelFn) {
+  const m = new Map();
+  for (const s of list) { const k = keyFn(s); let g = m.get(k); if (!g) { g = { key: k, ...labelFn(s), ps: 0, cs: 0 }; m.set(k, g); } s[4] === "1" ? g.ps++ : g.cs++; }
+  return [...m.values()].sort((a, b) => a.sortKey.localeCompare(b.sortKey));
+}
+const ay = () => (S.snap && S.snap.ay) || "2026-27";
+const pivotTitle = () => `Parishadiya Primary and Composite school having Pre-Primary Section in UDISE ${ay()}_dated_${dmy(S.snap ? S.snap.fileDate : "")}`;
+
+function render() {
+  const s = S.snap;
+  $("#pageTitle").textContent = `Parishadiya Primary and Composite schools having Pre-Primary Section in UDISE ${ay()}`;
+  $("#srcline").innerHTML = s ? `<span>Source <b>${esc(s.file)}</b></span><span>Updated <b>${esc(dmy(s.fileDate))}</b></span>${S.prev ? `<span>Compared with <b>${esc(dmy(S.prev.fileDate))}</b></span>` : ""}` : "<span>No file loaded yet.</span>";
+  const statuses = s ? [...new Set(s.schools.map(x => x[6]).filter(Boolean))].sort() : [];
+  if (S.profile && !statuses.includes(S.profile)) S.profile = "";
+  $("#selProfile").innerHTML = `<option value="">All</option>` + statuses.map(v => `<option ${v === S.profile ? "selected" : ""}>${esc(v)}</option>`).join("");
+  $("#selProfile").disabled = !statuses.length;
+  renderPipeline(); renderKpis(); renderView();
+}
+function renderPipeline() {
+  const f = S.snap && S.snap.funnel;
+  const ps = S.snap ? S.snap.schools.filter(x => x[4] === "1").length : 0, cs = S.snap ? S.snap.schools.length - ps : 0;
+  const st = (k, r, n, sub, c = "") => `<div class="step ${c}"><div class="k">${k}</div><div class="rule">${r}</div><div class="n">${f ? fmt(n) : "–"}</div><div class="sub">${sub}</div></div>`;
+  $("#pipeline").innerHTML = st("School Report", "all rows", f && f[0], "schools in the file") + st("Filter 1", "School_Managment_Code = 1", f && f[1], "Department of Education") +
+    st("Filter 2", "Pre-Pri_sec = 1 - Yes", f && f[2], "has a pre-primary section") + st("Columns", "School_Category_Code 1, 2", f && f[3], f ? `${fmt(ps)} PS + ${fmt(cs)} CS` : "PS + CS", "final");
+  const v = S.snap && S.snap.values; $("#valsBox").hidden = !v; if (!v) return;
+  const t = (h, o, sel) => `<div><h4>${h}</h4><table>${Object.entries(o).sort((a, b) => b[1] - a[1]).map(([k, n]) => `<tr class="${sel(k) ? "sel" : ""}"><td>${esc(k || "(blank)")}${sel(k) ? " ✓" : ""}</td><td>${fmt(n)}</td></tr>`).join("")}</table></div>`;
+  $("#valgrid").innerHTML = t("School_Managment_Code", v.mg, k => code(k) === "1") + t("Pre-Pri_sec", v.pp, isYes) + t("School_Category_Code", v.cat, k => ["1", "2"].includes(code(k)));
+}
+function renderKpis() {
+  const L = filtered(), ps = L.filter(x => x[4] === "1").length, cs = L.length - ps;
+  const nd = new Set(L.map(x => x[2])).size, nb = new Set(L.map(x => x[2] + "|" + x[3])).size;
+  let ch = "";
+  if (S.prevSet && !S.profile) { const d = L.length - S.prev.codes.length, nw = L.filter(x => !S.prevSet.has(x[0])).length; ch = `<span class="${d > 0 ? "up" : d < 0 ? "down" : ""}">${d > 0 ? "+" : ""}${fmt(d)}</span> since ${esc(dmy(S.prev.fileDate))} · ${fmt(nw)} new`; }
+  const k = (c, l, v, s) => `<div class="kpi ${c}"><div class="k">${l}</div><div class="v">${v}</div><div class="s">${s}</div></div>`;
+  $("#kpis").innerHTML = k("main", "Grand Total", fmt(L.length), ch || (S.profile ? `Profile status: ${esc(S.profile)}` : "PS + CS with pre-primary")) +
+    k("", "PS (category 1)", fmt(ps), "Primary schools") + k("", "CS (category 2)", fmt(cs), "Composite schools") +
+    k("", "Coverage spread", `${nd} <span style="font-size:15px;font-weight:600">districts</span>`, `${fmt(nb)} blocks have at least one`);
+}
+
+function sortRows(rows, cols, key) {
+  const st = S.sort[key]; if (!st) return rows;
+  const col = cols.find(c => c.k === st.k); if (!col) return rows;
+  return rows.slice().sort((a, b) => { const x = col.v(a), y = col.v(b); return (typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y))) * st.dir; });
+}
+function table(cols, rows, key, foot, clickId) {
+  const st = S.sort[key] || {};
+  const head = cols.map(c => `<th class="${c.num ? "num" : ""}"><button type="button" data-sort="${c.k}">${c.h}${st.k === c.k ? (st.dir > 0 ? " ▲" : " ▼") : ""}</button></th>`).join("");
+  const body = rows.map(r => `<tr${clickId ? ` class="click" tabindex="0" data-id="${esc(clickId(r))}"` : ""}>${cols.map(c => { const v = c.v(r); return `<td class="${c.num ? "num" : ""} ${c.cls || ""} ${c.num && v === 0 ? "zero" : ""}">${c.f ? c.f(r) : esc(c.num ? fmt(v) : v)}</td>`; }).join("")}</tr>`).join("");
+  const ft = foot ? `<tfoot><tr>${cols.map(c => `<td class="${c.num ? "num" : ""}">${foot[c.k] ?? ""}</td>`).join("")}</tr></tfoot>` : "";
+  return `<table class="data" data-key="${key}"><thead><tr>${head}</tr></thead><tbody>${body || `<tr><td colspan="${cols.length}" style="color:var(--muted);padding:18px 12px">No schools match.</td></tr>`}</tbody>${ft}</table>`;
+}
+const deltaF = d => d == null ? "–" : `<span class="${d > 0 ? "up" : d < 0 ? "down" : ""}">${d > 0 ? "+" : ""}${fmt(d)}</span>`;
+function pivotCols(nameCol, extra = []) {
+  const cols = [{ k: "sl", h: "Sl", num: 1, v: r => r.sl }, nameCol, ...extra,
+    { k: "ps", h: "PS", num: 1, v: r => r.ps }, { k: "cs", h: "CS", num: 1, v: r => r.cs }, { k: "t", h: "Grand Total", num: 1, v: r => r.ps + r.cs, f: r => `<b>${fmt(r.ps + r.cs)}</b>` }];
+  if (S.prev && !S.profile) cols.push({ k: "d", h: "Change", num: 1, v: r => r.delta ?? 0, f: r => deltaF(r.delta) });
+  return cols;
+}
+function footOf(rows, nameKey) {
+  const ps = rows.reduce((a, r) => a + r.ps, 0), cs = rows.reduce((a, r) => a + r.cs, 0), d = rows.reduce((a, r) => a + (r.delta || 0), 0);
+  return { [nameKey]: "Grand Total", ps: fmt(ps), cs: fmt(cs), t: fmt(ps + cs), d: deltaF(d) };
+}
+function districtRows() {
+  return group(filtered(), s => s[2], s => ({ name: s[2], sortKey: s[2] })).map((r, i) => ({ ...r, sl: i + 1, delta: S.prev ? r.ps + r.cs - (S.prev.dist[r.key] || 0) : null }));
+}
+function blockRows(dist) {
+  return group(filtered().filter(s => !dist || s[2] === dist), s => s[2] + "|" + s[3], s => ({ name: s[3], dist: s[2], sortKey: s[2] + "|" + s[3] }))
+    .map((r, i) => ({ ...r, sl: i + 1, delta: S.prev ? r.ps + r.cs - (S.prev.block[r.key] || 0) : null }));
+}
+function crumb() {
+  const parts = [`<button type="button" data-go="district">All districts</button>`];
+  if (S.dist) parts.push("›", S.view === "block" && !S.block ? `<b>${esc(S.dist)}</b>` : `<button type="button" data-go="block">${esc(S.dist)}</button>`);
+  if (S.block) parts.push("›", `<b>${esc(S.block)}</b>`);
+  return `<div class="crumb">${parts.join(" ")}</div>`;
+}
+function renderView() {
+  document.querySelectorAll("#segView button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.view === S.view)));
+  const tb = $("#toolbar"), box = $("#tablebox"), more = $("#more"); more.hidden = true;
+  if (S.view === "district") {
+    tb.innerHTML = `<span class="crumb">Click a district to see its blocks.</span>`;
+    const rows = districtRows(), cols = pivotCols({ k: "name", h: "District Name", cls: "name", v: r => r.name });
+    box.innerHTML = `<div class="ptitle">${esc(pivotTitle())}</div>` + table(cols, sortRows(rows, cols, "district"), "district", footOf(rows, "name"), r => r.key);
+  } else if (S.view === "block") {
+    tb.innerHTML = `${distSelect()}${S.dist ? crumb() : `<span class="crumb">Click a block to see its schools.</span>`}`;
+    const rows = blockRows(S.dist), cols = pivotCols({ k: "name", h: "Block Name", cls: "name", v: r => r.name }, S.dist ? [] : [{ k: "dist", h: "District Name", v: r => r.dist }]);
+    box.innerHTML = `<div class="ptitle">${S.dist ? esc(S.dist) + " · block-wise" : "All blocks"}</div>` + table(cols, sortRows(rows, cols, "block"), "block", footOf(rows, "name"), r => r.key);
+  } else {
+    tb.innerHTML = `${distSelect()}${blockSelect()}<select id="selCat" aria-label="Category"><option value="">PS + CS</option><option value="1" ${S.cat === "1" ? "selected" : ""}>PS only</option><option value="2" ${S.cat === "2" ? "selected" : ""}>CS only</option></select><input type="search" id="q" placeholder="Search UDISE code or school name" value="${esc(S.q)}">`;
+    const q = S.q.trim().toUpperCase();
+    const rows = filtered().filter(s => (!S.dist || s[2] === S.dist) && (!S.block || s[3] === S.block) && (!S.cat || s[4] === S.cat) && (!q || s[0].includes(q) || s[1].toUpperCase().includes(q)))
+      .sort((a, b) => a[2].localeCompare(b[2]) || a[3].localeCompare(b[3]) || a[1].localeCompare(b[1])).map((s, i) => ({ s, sl: i + 1 }));
+    const cols = [{ k: "sl", h: "Sl", num: 1, v: r => r.sl }, { k: "u", h: "UDISE Code", cls: "mono", v: r => r.s[0] },
+      { k: "n", h: "School Name", v: r => r.s[1], f: r => esc(r.s[1]) + (S.prevSet && !S.prevSet.has(r.s[0]) ? `<span class="pill p-new">New</span>` : "") },
+      { k: "c", h: "Type", v: r => r.s[4], f: r => r.s[4] === "1" ? `<span class="pill p-ps">PS</span>` : `<span class="pill p-cs">CS</span>` },
+      { k: "b", h: "Block", v: r => r.s[3] }, { k: "d", h: "District", v: r => r.s[2] },
+      { k: "l", h: "Location", v: r => r.s[5] }, { k: "o", h: "Profile status", v: r => r.s[6] }];
+    const sorted = sortRows(rows, cols, "school");
+    box.innerHTML = `<div class="ptitle">${esc(S.block ? S.block + ", " + S.dist : S.dist || "All districts")} · ${fmt(rows.length)} schools</div>` + table(cols, sorted.slice(0, S.limit), "school");
+    if (rows.length > S.limit) { more.hidden = false; more.innerHTML = `Showing ${fmt(S.limit)} of ${fmt(rows.length)} <button class="btn-plain" id="btnMore" type="button">Show 1,000 more</button>`; }
+  }
+  wire2();
+}
+function distSelect() { const ds = [...new Set(filtered().map(s => s[2]))].sort(); return `<select id="selDist" aria-label="District"><option value="">All districts</option>${ds.map(d => `<option ${d === S.dist ? "selected" : ""}>${esc(d)}</option>`).join("")}</select>`; }
+function blockSelect() { const bs = [...new Set(filtered().filter(s => !S.dist || s[2] === S.dist).map(s => s[3]))].sort(); return `<select id="selBlock" aria-label="Block"><option value="">All blocks</option>${bs.map(b => `<option ${b === S.block ? "selected" : ""}>${esc(b)}</option>`).join("")}</select>`; }
+function setView(v) { S.view = v; S.limit = 300; saveUi(); renderView(); }
+function wire2() {
+  const box = $("#tablebox");
+  box.querySelectorAll("th button[data-sort]").forEach(b => b.onclick = () => {
+    const key = box.querySelector("table").dataset.key, k = b.dataset.sort, cur = S.sort[key];
+    S.sort[key] = { k, dir: cur && cur.k === k ? -cur.dir : (["ps", "cs", "t", "d"].includes(k) ? -1 : 1) }; renderView(); });
+  const go = tr => { const id = tr.dataset.id;
+    if (S.view === "district") { S.dist = id; S.block = ""; setView("block"); }
+    else if (S.view === "block") { const [d, b] = id.split("|"); S.dist = d; S.block = b; S.q = ""; setView("school"); } };
+  box.querySelectorAll("tr.click").forEach(tr => { tr.onclick = () => go(tr); tr.onkeydown = e => { if (e.key === "Enter") go(tr); }; });
+  document.querySelectorAll("#toolbar [data-go]").forEach(b => b.onclick = () => { if (b.dataset.go === "district") { S.dist = ""; S.block = ""; } else S.block = ""; setView(b.dataset.go); });
+  const sd = $("#selDist"); if (sd) sd.onchange = () => { S.dist = sd.value; S.block = ""; S.limit = 300; saveUi(); renderView(); };
+  const sb = $("#selBlock"); if (sb) sb.onchange = () => { S.block = sb.value; S.limit = 300; saveUi(); renderView(); };
+  const sc = $("#selCat"); if (sc) sc.onchange = () => { S.cat = sc.value; renderView(); };
+  const q = $("#q"); if (q) { let t; q.oninput = () => { clearTimeout(t); t = setTimeout(() => { S.q = q.value; S.limit = 300; renderView(); const n = $("#q"); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 250); }; }
+  const bm = $("#btnMore"); if (bm) bm.onclick = () => { S.limit += 1000; renderView(); };
+}
+function saveUi() { lsSet(LS_UI, { view: S.view, dist: S.dist, block: S.block, profile: S.profile }); }
+
+/* ---------- export ---------- */
+let dlP = null;
+const getDownloads = () => Promise.resolve(null);
+function loadXlsxLib() {
+  if (window.XLSX) return Promise.resolve();
+  return new Promise((res, rej) => { const s = document.createElement("script"); s.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"; s.onload = res; s.onerror = () => rej(new Error("Couldn't load the Excel writer. Check your connection and try again.")); document.head.appendChild(s); });
+}
+async function exportExcel() {
+  if (!S.snap) return;
+  const btn = $("#btnExport"); btn.disabled = true;
+  try {
+    await loadXlsxLib();
+    const X = window.XLSX, wb = X.utils.book_new();
+    const add = (name, aoa, w) => { const ws = X.utils.aoa_to_sheet(aoa); ws["!cols"] = w.map(x => ({ wch: x })); X.utils.book_append_sheet(wb, ws, name); };
+    const dr = districtRows(), br = blockRows(""), sum = r => [r.reduce((a, x) => a + x.ps, 0), r.reduce((a, x) => a + x.cs, 0)];
+    const [dp, dc] = sum(dr), [bp, bc] = sum(br);
+    add("District", [[pivotTitle()], ["Sl", "District Name", "PS", "CS", "Grand Total"], ...dr.map(r => [r.sl, r.name, r.ps, r.cs, r.ps + r.cs]), ["Grand Total", "", dp, dc, dp + dc]], [6, 32, 10, 10, 12]);
+    add("Block", [[pivotTitle() + " (block-wise)"], ["Sl", "District Name", "Block Name", "PS", "CS", "Grand Total"], ...br.map(r => [r.sl, r.dist, r.name, r.ps, r.cs, r.ps + r.cs]), ["Grand Total", "", "", bp, bc, bp + bc]], [6, 30, 30, 10, 10, 12]);
+    const sch = filtered().slice().sort((a, b) => a[2].localeCompare(b[2]) || a[3].localeCompare(b[3]) || a[1].localeCompare(b[1]));
+    add("School", [["Sl", "UDISE_Code", "School_Name", "District", "Block", "Type", "Location", "Profile status", ...(S.prevSet ? ["New since " + dmy(S.prev.fileDate)] : [])],
+      ...sch.map((s, i) => [i + 1, s[0], s[1], s[2], s[3], s[4] === "1" ? "PS" : "CS", s[5], s[6], ...(S.prevSet ? [S.prevSet.has(s[0]) ? "" : "New"] : [])])], [6, 14, 42, 28, 28, 6, 10, 15, 14]);
+    const buf = X.write(wb, { bookType: "xlsx", type: "array", compression: true });
+    const fname = `PrePrimary_PS_CS_UDISE_${dmy(S.snap.fileDate)}${S.profile ? "_" + S.profile.replace(/\W+/g, "") : ""}.xlsx`;
+    const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const dl = await getDownloads();
+    if (dl) { try { await dl.save({ filename: fname, data: blob }); } catch (e) { if (e && e.code !== "declined") showMsg("err", "The download didn't go through (" + esc(e.code || e.message) + ")."); } }
+    else if (!window.claude) { const u = URL.createObjectURL(blob), a = document.createElement("a"); a.href = u; a.download = fname; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 4000); }
+    else showMsg("warn", "Downloads aren't available in this view. Open the page in claude.ai, or use the HTML file on your computer.");
+  } catch (e) { showMsg("err", esc(e.message || String(e))); }
+  finally { btn.disabled = false; }
+}
+
+/* ---------- wiring ---------- */
+(function init() {
+  $("#btnExport").onclick = exportExcel;
+  $("#selProfile").onchange = e => { S.profile = e.target.value; saveUi(); render(); };
+  document.querySelectorAll("#segView button").forEach(b => b.onclick = () => { if (b.dataset.view === "district") { S.dist = ""; S.block = ""; } if (b.dataset.view === "block") S.block = ""; setView(b.dataset.view); });
+  const ui = lsGet(LS_UI); if (ui) { S.view = ui.view || "district"; S.dist = ui.dist || ""; S.block = ui.block || ""; S.profile = ui.profile || ""; }
+  if (MODE === "update") initUpdate(); else loadPublic();
+})();
+async function loadPublic() {
+  $("#tablebox").innerHTML = `<div class="loading">Loading data…</div>`;
+  try {
+    if (!/^https:\/\/script\.google\.com\//.test(DATA_URL)) throw new Error("no url");
+    const r = await fetch(DATA_URL, { cache: "no-store" });
+    if (!r.ok) throw new Error(r.status);
+    useData(await r.json());
+  } catch (e) { render(); showMsg("err", "Couldn't load the data right now. Refresh the page in a minute; if it keeps failing, the data feed needs to be checked."); }
+}
+function useData(d) {
+  if (!d || !d.cur || !Array.isArray(d.cur.schools)) throw new Error("That isn't a data.json from this dashboard.");
+  S.snap = d.cur; S.prev = d.prev && d.prev.codes ? d.prev : null; setPrevSet(); render();
+}
+function initUpdate() {
+  setOwnerUi(true); $("#cfg").hidden = false; render();
+  const inp = $("#liveUrl"), st = $("#cfgStatus");
+  inp.value = lsGet("ppudise.liveurl") || "https://bhatjunaids.github.io/preprimary-udise/";
+  const ok = src => { st.textContent = `Current data loaded from ${src}: dated ${dmy(S.snap.fileDate)}, ${fmt(S.snap.schools.length)} schools. Now drop the new Excel below.`; };
+  $("#btnLoadLive").onclick = async () => {
+    let u = inp.value.trim(); if (!u) return; lsSet("ppudise.liveurl", u);
+    if (!/\.json$/i.test(u)) u = u.replace(/\/?(index\.html)?$/i, "/") + "data.json";
+    st.textContent = "Loading…";
+    try { const r = await fetch(u + "?v=" + Date.now(), { cache: "no-store" }); if (!r.ok) throw new Error("HTTP " + r.status); useData(await r.json()); ok("the live link"); }
+    catch (e) { st.textContent = "Couldn't load it (" + e.message + "). Check the link, or choose the current data.json from your computer."; }
+  };
+  const fd = $("#fileData");
+  $("#btnPickData").onclick = () => fd.click();
+  fd.onchange = async () => { const f = fd.files[0]; fd.value = ""; if (!f) return; try { useData(JSON.parse(await f.text())); ok(f.name); } catch (e) { st.textContent = e.message; } };
+  $("#btnData").onclick = () => {
+    const blob = new Blob([JSON.stringify({ cur: S.snap, prev: S.prev })], { type: "application/json" });
+    const u = URL.createObjectURL(blob), a = document.createElement("a"); a.href = u; a.download = "data.json"; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(u), 4000);
+  };
+}
+function setOwnerUi(on) {}
+</script>
+
+</body>
+</html>
